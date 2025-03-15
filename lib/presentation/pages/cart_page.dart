@@ -1,3 +1,4 @@
+import 'package:cart_task/presentation/providers/cart_item_provider.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:cart_task/domain/entities/cart_item.dart';
@@ -28,9 +29,7 @@ class _CartPageState extends ConsumerState<CartPage> {
     // Get current user ID
     final currentUser = ref.watch(currentUserProvider);
     if (currentUser == null) {
-      return const Scaffold(
-        body: Center(child: Text('User not found')),
-      );
+      return const Scaffold(body: Center(child: Text('User not found')));
     }
 
     // Watch cart items
@@ -40,59 +39,86 @@ class _CartPageState extends ConsumerState<CartPage> {
     // Watch applied coupon
     final appliedCouponAsync = ref.watch(couponNotifierProvider);
 
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Shopping Cart'),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.delete_outline),
-            onPressed: () => _clearCart(currentUser.id),
-            tooltip: 'Clear Cart',
-          ),
-        ],
-      ),
-      body: Column(
-        children: [
-          Expanded(
-            child: cartItemsAsync.when(
-              data: (cartItems) {
-                if (cartItems.isEmpty) {
-                  return const Center(
-                    child: Text('Your cart is empty'),
-                  );
-                }
+    return WillPopScope(
+      onWillPop: () async {
+        // Refresh all cart-related providers when navigating back
+        if (currentUser != null) {
+          // Refresh product-related cart providers to ensure home page is updated
+          final productsAsync = ref.read(productsProvider);
+          if (productsAsync.hasValue) {
+            for (final product in productsAsync.value!) {
+              ref.refresh(
+                isProductInCartProvider((
+                  userId: currentUser.id,
+                  productId: product.id,
+                )),
+              );
+              ref.refresh(
+                cartItemByProductProvider((
+                  userId: currentUser.id,
+                  productId: product.id,
+                )),
+              );
+            }
+          }
+          // Refresh cart providers
+          ref.refresh(cartItemsProvider(currentUser.id));
+          ref.refresh(cartTotalProvider(currentUser.id));
+        }
+        return true;
+      },
+      child: Scaffold(
+        appBar: AppBar(
+          title: const Text('Shopping Cart'),
+          actions: [
+            IconButton(
+              icon: const Icon(Icons.delete_outline),
+              onPressed: () => _clearCart(currentUser.id),
+              tooltip: 'Clear Cart',
+            ),
+          ],
+        ),
+        body: Column(
+          children: [
+            Expanded(
+              child: cartItemsAsync.when(
+                data: (cartItems) {
+                  if (cartItems.isEmpty) {
+                    return const Center(child: Text('Your cart is empty'));
+                  }
 
-                return ListView.builder(
-                  itemCount: cartItems.length,
-                  itemBuilder: (context, index) {
-                    final cartItem = cartItems[index];
-                    return _buildCartItemTile(cartItem, currentUser.id);
-                  },
-                );
-              },
-              loading: () => const Center(child: CircularProgressIndicator()),
-              error: (error, stackTrace) => Center(
-                child: Text('Error loading cart: $error'),
+                  return ListView.builder(
+                    itemCount: cartItems.length,
+                    itemBuilder: (context, index) {
+                      final cartItem = cartItems[index];
+                      return _buildCartItemTile(cartItem, currentUser.id);
+                    },
+                  );
+                },
+                loading: () => const Center(child: CircularProgressIndicator()),
+                error:
+                    (error, stackTrace) =>
+                        Center(child: Text('Error loading cart: $error')),
               ),
             ),
+            _buildCouponSection(appliedCouponAsync),
+            _buildCartSummary(cartTotalAsync, appliedCouponAsync),
+          ],
+        ),
+        bottomNavigationBar: Padding(
+          padding: const EdgeInsets.all(16.0),
+          child: ElevatedButton(
+            onPressed: () {
+              // TODO: Implement checkout functionality
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('Checkout not implemented yet')),
+              );
+            },
+            style: ElevatedButton.styleFrom(
+              padding: const EdgeInsets.symmetric(vertical: 16.0),
+            ),
+            child: const Text('CHECKOUT'),
           ),
-          _buildCouponSection(appliedCouponAsync),
-          _buildCartSummary(cartTotalAsync, appliedCouponAsync),
-        ],
-      ),
-      bottomNavigationBar: Padding(
-        padding: const EdgeInsets.all(16.0),
-        child: ElevatedButton(
-          onPressed: () {
-            // TODO: Implement checkout functionality
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('Checkout not implemented yet')),
-            );
-          },
-          style: ElevatedButton.styleFrom(
-            padding: const EdgeInsets.symmetric(vertical: 16.0),
-          ),
-          child: const Text('CHECKOUT'),
         ),
       ),
     );
@@ -133,28 +159,28 @@ class _CartPageState extends ConsumerState<CartPage> {
               children: [
                 IconButton(
                   icon: const Icon(Icons.remove),
-                  onPressed: cartItem.quantity > 1
-                      ? () => _updateQuantity(cartItem.id, cartItem.quantity - 1)
-                      : null,
+                  onPressed:
+                      () => _updateQuantity(cartItem.id, cartItem.quantity - 1),
                 ),
                 Text('${cartItem.quantity}'),
                 IconButton(
                   icon: const Icon(Icons.add),
-                  onPressed: () =>
-                      _updateQuantity(cartItem.id, cartItem.quantity + 1),
+                  onPressed:
+                      () => _updateQuantity(cartItem.id, cartItem.quantity + 1),
                 ),
               ],
             ),
           ),
         );
       },
-      loading: () => const ListTile(
-        leading: CircularProgressIndicator(),
-        title: Text('Loading...'),
-      ),
-      error: (error, stackTrace) => ListTile(
-        title: Text('Error loading product: $error'),
-      ),
+      loading:
+          () => const ListTile(
+            leading: CircularProgressIndicator(),
+            title: Text('Loading...'),
+          ),
+      error:
+          (error, stackTrace) =>
+              ListTile(title: Text('Error loading product: $error')),
     );
   }
 
@@ -169,18 +195,20 @@ class _CartPageState extends ConsumerState<CartPage> {
               decoration: InputDecoration(
                 labelText: 'Coupon Code',
                 hintText: 'Enter coupon code',
-                errorText: appliedCouponAsync.hasError
-                    ? appliedCouponAsync.error.toString()
-                    : null,
+                errorText:
+                    appliedCouponAsync.hasError
+                        ? appliedCouponAsync.error.toString()
+                        : null,
                 border: const OutlineInputBorder(),
               ),
             ),
           ),
           const SizedBox(width: 16.0),
           ElevatedButton(
-            onPressed: _appliedCouponCode != null
-                ? _clearAppliedCoupon
-                : () => _applyCoupon(_couponController.text),
+            onPressed:
+                _appliedCouponCode != null
+                    ? _clearAppliedCoupon
+                    : () => _applyCoupon(_couponController.text),
             child: Text(_appliedCouponCode != null ? 'CLEAR' : 'APPLY'),
           ),
         ],
@@ -189,14 +217,14 @@ class _CartPageState extends ConsumerState<CartPage> {
   }
 
   Widget _buildCartSummary(
-      AsyncValue<double> cartTotalAsync, AsyncValue<dynamic> appliedCouponAsync) {
+    AsyncValue<double> cartTotalAsync,
+    AsyncValue<dynamic> appliedCouponAsync,
+  ) {
     return Container(
       padding: const EdgeInsets.all(16.0),
       decoration: BoxDecoration(
         color: Colors.grey.shade100,
-        border: Border(
-          top: BorderSide(color: Colors.grey.shade300),
-        ),
+        border: Border(top: BorderSide(color: Colors.grey.shade300)),
       ),
       child: Column(
         children: [
@@ -206,23 +234,30 @@ class _CartPageState extends ConsumerState<CartPage> {
               const Text('Subtotal:'),
               cartTotalAsync.when(
                 data: (total) => Text('\$${total.toStringAsFixed(2)}'),
-                loading: () => const CircularProgressIndicator(strokeWidth: 2.0),
+                loading:
+                    () => const CircularProgressIndicator(strokeWidth: 2.0),
                 error: (error, _) => Text('Error: $error'),
               ),
             ],
           ),
-          if (appliedCouponAsync.hasValue && appliedCouponAsync.value != null) ...[  
+          if (appliedCouponAsync.hasValue &&
+              appliedCouponAsync.value != null) ...[
             const SizedBox(height: 8.0),
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Text('Discount (${appliedCouponAsync.value!.discountPercentage}%):'),
+                Text(
+                  'Discount (${appliedCouponAsync.value!.discountPercentage}%):',
+                ),
                 cartTotalAsync.when(
                   data: (total) {
-                    final discount = total * (appliedCouponAsync.value!.discountPercentage / 100);
+                    final discount =
+                        total *
+                        (appliedCouponAsync.value!.discountPercentage / 100);
                     return Text('-\$${discount.toStringAsFixed(2)}');
                   },
-                  loading: () => const CircularProgressIndicator(strokeWidth: 2.0),
+                  loading:
+                      () => const CircularProgressIndicator(strokeWidth: 2.0),
                   error: (error, _) => Text('Error: $error'),
                 ),
               ],
@@ -239,8 +274,11 @@ class _CartPageState extends ConsumerState<CartPage> {
               cartTotalAsync.when(
                 data: (total) {
                   double finalTotal = total;
-                  if (appliedCouponAsync.hasValue && appliedCouponAsync.value != null) {
-                    final discount = total * (appliedCouponAsync.value!.discountPercentage / 100);
+                  if (appliedCouponAsync.hasValue &&
+                      appliedCouponAsync.value != null) {
+                    final discount =
+                        total *
+                        (appliedCouponAsync.value!.discountPercentage / 100);
                     finalTotal = total - discount;
                   }
                   return Text(
@@ -248,7 +286,8 @@ class _CartPageState extends ConsumerState<CartPage> {
                     style: const TextStyle(fontWeight: FontWeight.bold),
                   );
                 },
-                loading: () => const CircularProgressIndicator(strokeWidth: 2.0),
+                loading:
+                    () => const CircularProgressIndicator(strokeWidth: 2.0),
                 error: (error, _) => Text('Error: $error'),
               ),
             ],
@@ -263,26 +302,54 @@ class _CartPageState extends ConsumerState<CartPage> {
       final currentUser = ref.read(currentUserProvider);
       if (currentUser == null) return;
 
-      final cartNotifier = ref.read(cartNotifierProvider(currentUser.id).notifier);
+      // If new quantity is 0, remove the item from cart instead of updating
+      if (newQuantity <= 0) {
+        _removeFromCart(cartItemId);
+        return;
+      }
+
+      final cartNotifier = ref.read(
+        cartNotifierProvider(currentUser.id).notifier,
+      );
       await cartNotifier.updateQuantity(cartItemId, newQuantity);
+
+      // Refresh all relevant providers to immediately update UI
+      ref.refresh(cartItemsProvider(currentUser.id));
+      ref.refresh(cartTotalProvider(currentUser.id));
+
+      // Also refresh the cart notifier to ensure UI is updated
+      await cartNotifier.loadCartItems();
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error updating quantity: $e')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Error updating quantity: $e')));
       }
     }
   }
 
   void _removeFromCart(int cartItemId) async {
     try {
+      final currentUser = ref.read(currentUserProvider);
+      if (currentUser == null) return;
+
       final removeFromCart = ref.read(removeProductFromCartProvider);
       await removeFromCart.execute(cartItemId);
+
+      // Refresh all relevant providers to immediately update UI
+      ref.refresh(cartItemsProvider(currentUser.id));
+      ref.refresh(cartTotalProvider(currentUser.id));
+
+      // Also refresh the cart notifier to ensure UI is updated
+      final cartNotifier = ref.read(
+        cartNotifierProvider(currentUser.id).notifier,
+      );
+      await cartNotifier.loadCartItems();
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error removing item: $e')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Error removing item: $e')));
       }
     }
   }
@@ -292,11 +359,35 @@ class _CartPageState extends ConsumerState<CartPage> {
       final cartNotifier = ref.read(cartNotifierProvider(userId).notifier);
       await cartNotifier.clearCart();
       _clearAppliedCoupon();
-    } catch (e) {
+
+      // Refresh all relevant providers to immediately update UI
+      ref.refresh(cartItemsProvider(userId));
+      ref.refresh(cartTotalProvider(userId));
+
+      // Refresh product-related cart providers to ensure home page is updated
+      final productsAsync = ref.read(productsProvider);
+      if (productsAsync.hasValue) {
+        for (final product in productsAsync.value!) {
+          ref.refresh(
+            isProductInCartProvider((userId: userId, productId: product.id)),
+          );
+          ref.refresh(
+            cartItemByProductProvider((userId: userId, productId: product.id)),
+          );
+        }
+      }
+
+      // Show a confirmation message
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error clearing cart: $e')),
+          const SnackBar(content: Text('Cart cleared successfully')),
         );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Error clearing cart: $e')));
       }
     }
   }
@@ -312,9 +403,9 @@ class _CartPageState extends ConsumerState<CartPage> {
       });
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error applying coupon: $e')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Error applying coupon: $e')));
       }
     }
   }

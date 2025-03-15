@@ -1,3 +1,4 @@
+import 'package:cart_task/presentation/providers/cart_item_provider.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:cart_task/domain/entities/product.dart';
@@ -15,7 +16,7 @@ class HomePage extends ConsumerWidget {
     // For demo purposes, we'll use a hardcoded user ID
     // In a real app, this would come from authentication
     const int userId = 1;
-    
+
     // Initialize the current user if it's not set
     final currentUser = ref.watch(currentUserProvider);
     if (currentUser == null) {
@@ -56,11 +57,9 @@ class HomePage extends ConsumerWidget {
       body: productsAsync.when(
         data: (products) {
           if (products.isEmpty) {
-            return const Center(
-              child: Text('No products available'),
-            );
+            return const Center(child: Text('No products available'));
           }
-          
+
           return GridView.builder(
             padding: const EdgeInsets.all(16),
             gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
@@ -80,14 +79,19 @@ class HomePage extends ConsumerWidget {
           );
         },
         loading: () => const Center(child: CircularProgressIndicator()),
-        error: (error, stackTrace) => Center(
-          child: Text('Error loading products: $error'),
-        ),
+        error:
+            (error, stackTrace) =>
+                Center(child: Text('Error loading products: $error')),
       ),
     );
   }
 
-  void _addToCart(BuildContext context, WidgetRef ref, Product product, int userId) async {
+  void _addToCart(
+    BuildContext context,
+    WidgetRef ref,
+    Product product,
+    int userId,
+  ) async {
     try {
       final addToCart = ref.read(addProductToCartProvider);
       await addToCart.execute(
@@ -95,15 +99,21 @@ class HomePage extends ConsumerWidget {
         productId: product.id,
         quantity: 1,
       );
-      
-      // Refresh the cart state to immediately show the added item
+
+      // Refresh all relevant providers to immediately update UI
       ref.refresh(cartItemsProvider(userId));
       ref.refresh(cartTotalProvider(userId));
-      
+      ref.refresh(
+        isProductInCartProvider((userId: userId, productId: product.id)),
+      );
+      ref.refresh(
+        cartItemByProductProvider((userId: userId, productId: product.id)),
+      );
+
       // Also refresh the cart notifier if it's being used
       final cartNotifier = ref.read(cartNotifierProvider(userId).notifier);
-      cartNotifier.loadCartItems();
-      
+      await cartNotifier.loadCartItems();
+
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -119,9 +129,9 @@ class HomePage extends ConsumerWidget {
       }
     } catch (e) {
       if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(e.toString())),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(e.toString())));
       }
     }
   }

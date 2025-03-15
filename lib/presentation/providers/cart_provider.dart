@@ -23,27 +23,30 @@ final removeProductFromCartProvider = Provider<RemoveProductFromCart>((ref) {
 });
 
 // Provider for cart items by user ID
-final cartItemsProvider = FutureProvider.family<List<CartItem>, int>(
-  (ref, userId) async {
-    final repository = ref.watch(cartRepositoryProvider);
-    return repository.getCartItems(userId);
-  },
-);
+final cartItemsProvider = FutureProvider.family<List<CartItem>, int>((
+  ref,
+  userId,
+) async {
+  final repository = ref.watch(cartRepositoryProvider);
+  return repository.getCartItems(userId);
+});
 
 // Provider for cart total
-final cartTotalProvider = FutureProvider.family<double, int>(
-  (ref, userId) async {
-    final repository = ref.watch(cartRepositoryProvider);
-    return repository.getCartTotal(userId);
-  },
-);
+final cartTotalProvider = FutureProvider.family<double, int>((
+  ref,
+  userId,
+) async {
+  final repository = ref.watch(cartRepositoryProvider);
+  return repository.getCartTotal(userId);
+});
 
 // Notifier for cart operations
 class CartNotifier extends StateNotifier<AsyncValue<List<CartItem>>> {
   final CartRepository _repository;
   final int _userId;
 
-  CartNotifier(this._repository, this._userId) : super(const AsyncValue.loading()) {
+  CartNotifier(this._repository, this._userId)
+    : super(const AsyncValue.loading()) {
     // Load cart items when initialized
     loadCartItems();
   }
@@ -60,6 +63,7 @@ class CartNotifier extends StateNotifier<AsyncValue<List<CartItem>>> {
 
   Future<void> addToCart(int productId, int quantity) async {
     try {
+      state = const AsyncValue.loading();
       final cartItem = CartItem(
         id: 0, // Will be set by database
         userId: _userId,
@@ -68,41 +72,52 @@ class CartNotifier extends StateNotifier<AsyncValue<List<CartItem>>> {
         createdAt: DateTime.now(),
       );
       await _repository.addToCart(cartItem);
-      loadCartItems(); // Refresh cart items
-    } catch (e) {
+      final items = await _repository.getCartItems(_userId);
+      state = AsyncValue.data(items);
+    } catch (e, stack) {
+      state = AsyncValue.error(e, stack);
       rethrow;
     }
   }
 
   Future<void> updateQuantity(int cartItemId, int quantity) async {
     try {
+      state = const AsyncValue.loading();
       await _repository.updateCartItemQuantity(cartItemId, quantity);
-      loadCartItems(); // Refresh cart items
-    } catch (e) {
+      final items = await _repository.getCartItems(_userId);
+      state = AsyncValue.data(items);
+    } catch (e, stack) {
+      state = AsyncValue.error(e, stack);
       rethrow;
     }
   }
 
   Future<void> removeFromCart(int cartItemId) async {
     try {
+      state = const AsyncValue.loading();
       await _repository.removeFromCart(cartItemId);
-      loadCartItems(); // Refresh cart items
-    } catch (e) {
+      final items = await _repository.getCartItems(_userId);
+      state = AsyncValue.data(items);
+    } catch (e, stack) {
+      state = AsyncValue.error(e, stack);
       rethrow;
     }
   }
 
   Future<void> clearCart() async {
     try {
+      state = const AsyncValue.loading();
       await _repository.clearCart(_userId);
-      loadCartItems(); // Refresh cart items
-    } catch (e) {
+      state = const AsyncValue.data([]);
+    } catch (e, stack) {
+      state = AsyncValue.error(e, stack);
       rethrow;
     }
   }
 }
 
 // Provider for the cart notifier
-final cartNotifierProvider = StateNotifierProvider.family<CartNotifier, AsyncValue<List<CartItem>>, int>(
-  (ref, userId) => CartNotifier(ref.watch(cartRepositoryProvider), userId),
-);
+final cartNotifierProvider =
+    StateNotifierProvider.family<CartNotifier, AsyncValue<List<CartItem>>, int>(
+      (ref, userId) => CartNotifier(ref.watch(cartRepositoryProvider), userId),
+    );
