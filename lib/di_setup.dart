@@ -18,10 +18,18 @@ class DISetup extends StatelessWidget {
     return ProviderScope(
       overrides: [
         // Override the repository providers with the implementations
-        productRepositoryProvider.overrideWithProvider(di.productRepositoryProvider),
-        userRepositoryProvider.overrideWithProvider(di.userRepositoryProvider),
-        cartRepositoryProvider.overrideWithProvider(di.cartRepositoryProvider),
-        couponRepositoryProvider.overrideWithProvider(di.couponRepositoryProvider),
+        productRepositoryProvider.overrideWith(
+          (ref) => ref.watch(di.productRepositoryProvider),
+        ),
+        userRepositoryProvider.overrideWith(
+          (ref) => ref.watch(di.userRepositoryProvider),
+        ),
+        cartRepositoryProvider.overrideWith(
+          (ref) => ref.watch(di.cartRepositoryProvider),
+        ),
+        couponRepositoryProvider.overrideWith(
+          (ref) => ref.watch(di.couponRepositoryProvider),
+        ),
       ],
       child: child,
     );

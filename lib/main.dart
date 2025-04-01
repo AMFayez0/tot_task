@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:cart_task/presentation/pages/home_page.dart';
 import 'package:cart_task/presentation/pages/cart_page.dart';
 import 'package:cart_task/di_setup.dart';

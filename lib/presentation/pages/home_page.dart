@@ -1,18 +1,19 @@
-import 'package:cart_task/presentation/providers/cart_item_provider.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:cart_task/domain/entities/product.dart';
 import 'package:cart_task/domain/entities/user.dart';
 import 'package:cart_task/presentation/providers/product_provider.dart';
 import 'package:cart_task/presentation/providers/user_provider.dart';
-import 'package:cart_task/presentation/providers/cart_provider.dart';
 import 'package:cart_task/presentation/widgets/product_card.dart';
+import 'package:cart_task/presentation/services/product_service.dart';
 
 class HomePage extends ConsumerWidget {
   const HomePage({Key? key}) : super(key: key);
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    // Create product service
+    final productService = ProductService(ref, context);
+
     // For demo purposes, we'll use a hardcoded user ID
     // In a real app, this would come from authentication
     const int userId = 1;
@@ -73,7 +74,7 @@ class HomePage extends ConsumerWidget {
               final product = products[index];
               return ProductCard(
                 product: product,
-                onAddToCart: () => _addToCart(context, ref, product, userId),
+                onAddToCart: () => productService.addToCart(product, userId),
               );
             },
           );
@@ -84,55 +85,5 @@ class HomePage extends ConsumerWidget {
                 Center(child: Text('Error loading products: $error')),
       ),
     );
-  }
-
-  void _addToCart(
-    BuildContext context,
-    WidgetRef ref,
-    Product product,
-    int userId,
-  ) async {
-    try {
-      final addToCart = ref.read(addProductToCartProvider);
-      await addToCart.execute(
-        userId: userId,
-        productId: product.id,
-        quantity: 1,
-      );
-
-      // Refresh all relevant providers to immediately update UI
-      ref.refresh(cartItemsProvider(userId));
-      ref.refresh(cartTotalProvider(userId));
-      ref.refresh(
-        isProductInCartProvider((userId: userId, productId: product.id)),
-      );
-      ref.refresh(
-        cartItemByProductProvider((userId: userId, productId: product.id)),
-      );
-
-      // Also refresh the cart notifier if it's being used
-      final cartNotifier = ref.read(cartNotifierProvider(userId).notifier);
-      await cartNotifier.loadCartItems();
-
-      if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('${product.name} added to cart'),
-            action: SnackBarAction(
-              label: 'VIEW CART',
-              onPressed: () {
-                Navigator.pushNamed(context, '/cart');
-              },
-            ),
-          ),
-        );
-      }
-    } catch (e) {
-      if (context.mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text(e.toString())));
-      }
-    }
   }
 }
